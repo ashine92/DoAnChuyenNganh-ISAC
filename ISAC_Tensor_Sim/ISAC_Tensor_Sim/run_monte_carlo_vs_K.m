@@ -44,13 +44,8 @@ function results = run_monte_carlo_vs_K(params)
             try
                 [Hk, alpha, tau_true, az_R, el_R, az_T, el_T, pl_all, ~, ~] = ...
                     generate_channel(params);
-                [Y, W, F_mat, ~, ~, ~] = construct_tensor(params, Hk, alpha, tau_true);
+                [Y, W, F_mat, ~, AR_true, BT_true] = construct_tensor(params, Hk, alpha, tau_true, pl_all);
 
-                AR_true = zeros(params.NR, L);
-                BT_true = zeros(params.NT, L);
-                for l = 1:L
-                    [AR_true(:,l), BT_true(:,l)] = near_field_array_response(params, pl_all(:,l));
-                end
                 k_indices = round(linspace(1, params.K_bar, params.K))';
                 C_true = zeros(params.K, L);
                 for l = 1:L
@@ -58,8 +53,8 @@ function results = run_monte_carlo_vs_K(params)
                 end
 
                 [A_hat, B_hat, C_hat, ~, ~] = cp_als(Y, L, params);
-                AR_hat = pinv(W') * A_hat;
-                BT_hat = pinv(F_mat') * B_hat;
+                AR_hat = W * A_hat;
+                BT_hat = F_mat * B_hat;
                 tau_hat = estimate_toa(C_hat, params);
                 [tau_hat, perm] = match_paths_local(tau_hat, tau_true);
                 AR_hat = AR_hat(:,perm); BT_hat = BT_hat(:,perm);

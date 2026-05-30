@@ -54,14 +54,7 @@ function results = run_monte_carlo(params)
                     generate_channel(params);
 
                 % --- Construct received tensor ---
-                [Y, W, F_mat, ~, ~, ~] = construct_tensor(params, Hk, alpha, tau_true);
-
-                % --- Retrieve true AR, BT for CRB ---
-                AR_true = zeros(params.NR, L);
-                BT_true = zeros(params.NT, L);
-                for l = 1:L
-                    [AR_true(:,l), BT_true(:,l)] = near_field_array_response(params, pl_all(:,l));
-                end
+                [Y, W, F_mat, ~, AR_true, BT_true] = construct_tensor(params, Hk, alpha, tau_true, pl_all);
 
                 % --- Build true C matrix ---
                 k_indices = round(linspace(1, params.K_bar, params.K))';
@@ -75,8 +68,8 @@ function results = run_monte_carlo(params)
                 [A_hat, B_hat, C_hat, ~, ~] = cp_als(Y, L, params);
 
                 % --- Recover AR_hat, BT_hat ---
-                AR_hat = pinv(W') * A_hat;   % NR x L
-                BT_hat = pinv(F_mat') * B_hat; % NT x L
+                AR_hat = W * A_hat;   % NR x L
+                BT_hat = F_mat * B_hat; % NT x L
 
                 % --- ToA estimation ---
                 tau_hat = estimate_toa(C_hat, params);

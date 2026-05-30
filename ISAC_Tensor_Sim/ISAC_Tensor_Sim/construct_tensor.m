@@ -1,40 +1,33 @@
-function [Y, W, F_mat, c_true, AR, BT] = construct_tensor(params, Hk_all, alpha, tau)
+function [Y, W, F_mat, c_true, AR, BT] = construct_tensor(params, Hk_all, alpha, tau, pl_all)
 % =========================================================================
 % construct_tensor.m
 % =========================================================================
 % Description:
-%   Constructs the received signal third-order tensor Y ∈ C^{F x T x K}
-%   from the channel matrices Hk and hybrid beamforming matrices W, F.
+%   Constructs the received signal tensor Y ∈ C^{F x T x K} and returns
+%   the true beamforming matrices W, F and the true factor matrices.
 %
-%   Signal model (Eq. 9-10):
-%     Y_k = W^T H_k F + V_k
+%   Signal model (Eq. 10):  Y_k = W^T H_k F + V_k
+%   Tensor CP form (Eq. 16): Y = Σ_l (W^T a_{R,l}) ∘ (F^T b_{T,l}) ∘ c_l + V
 %
-%   Tensor structure (Eq. 16):
-%     Y = I_{3,L} ×_1 (W^T A_R) ×_2 (F^T B_T) ×_3 C + V
-%
-%   W (NR x F) and F (NT x T) are truncated DFT matrices ensuring
-%   column orthogonality: W*W^T = I_NR, F*F^T = I_NT  (Sec. 5.2)
-%
-%   Mode dimensions:
-%     mode-1 = F (sub-frames)
-%     mode-2 = T (time frames)
-%     mode-3 = K (subcarriers)
+%   W (NR×F) and F_mat (NT×T): first F/T columns of the normalized DFT matrix.
+%   Column orthogonality: W'*W = I_F,  F_mat'*F_mat = I_T.
 %
 % Inputs:
-%   params   - system parameter struct (F, T, K, NR, NT, K_bar, fs, L)
-%   Hk_all   - NR x NT x K true channel matrices
-%   alpha    - L x 1 complex path gains
+%   params   - struct: F, T, K, K_bar, NR, NT, fs, L, SNR_dB
+%   Hk_all   - NR x NT x K channel matrices
+%   alpha    - L x 1 complex gains
 %   tau      - L x 1 time delays [s]
+%   pl_all   - 3 x L SP positions [m]  (used to build AR, BT)
 %
 % Outputs:
-%   Y     - F x T x K received tensor (complex, noisy)
-%   W     - NR x F combining matrix (truncated DFT)
-%   F_mat - NT x T precoding matrix (truncated DFT)
-%   c_true - K x L true C factor matrix columns
+%   Y      - F x T x K noisy received tensor
+%   W      - NR x F combining matrix (truncated DFT)
+%   F_mat  - NT x T precoding matrix (truncated DFT)
+%   c_true - K x L true C-factor columns  c_l = alpha_l * c_bar(tau_l)
 %   AR     - NR x L true array responses at UT
 %   BT     - NT x L true array responses at BS
 %
-% Runtime: O(F*T*K*L)
+% Runtime: O(F*T*K + NR*NT*K)
 % =========================================================================
 
     F_size = params.F;
@@ -48,64 +41,65 @@ function [Y, W, F_mat, c_true, AR, BT] = construct_tensor(params, Hk_all, alpha,
     SNR_dB = params.SNR_dB;
 
     % -------------------------------------------------------
-    % Construct DFT-based beamforming matrices (Sec. 5.2)
-    % W: NR x F  (first F columns of NR-point DFT)
-    % F: NT x T  (first T columns of NT-point DFT)
+    % DFT beamforming matrices (Sec 5.2, paper)
+    % W'*W = I_F  and  F_mat'*F_mat = I_T  by unitary DFT property
+    % (Note: If F > NR or T > NT, we use an oversampled DFT dictionary)
     % -------------------------------------------------------
-    DFT_NR = dftmtx(NR) / sqrt(NR);   % NR x NR, unitary DFT
-    DFT_NT = dftmtx(NT) / sqrt(NT);
+    if F_size <= NR
+        W = dftmtx(NR) / sqrt(NR);
+        W = W(:, 1:F_size);   % NR x F
+    else
+        W_full = dftmtx(F_size) / sqrt(F_size);
+        W = W_full(1:NR, :);  % NR x F
+    end
 
-    % Use first F_size / T_size columns
-    W     = DFT_NR(:, 1:F_size);   % NR x F
-    F_mat = DFT_NT(:, 1:T_size);   % NT x T
+    if T_size <= NT
+        F_mat = dftmtx(NT) / sqrt(NT);
+        F_mat = F_mat(:, 1:T_size); % NT x T
+    else
+        F_full = dftmtx(T_size) / sqrt(T_size);
+        F_mat = F_full(1:NT, :);    % NT x T
+    end
 
     % -------------------------------------------------------
-    % True factor matrices A, B, C (without noise)
-    % A = W^T A_R  (F x L)
-    % B = F^T B_T  (T x L)
-    % C = [c1...cL]  (K x L)
+    % Subcarrier index set (K uniformly selected from K_bar)
     % -------------------------------------------------------
-    k_indices = round(linspace(1, K_bar, K));
+    k_indices = round(linspace(1, K_bar, K));   % 1 x K
 
+    % -------------------------------------------------------
+    % True C-factor matrix: c_true(:,l) = alpha_l * c_bar(tau_l)
+    %   c_bar(tau, k) = exp(-j2*pi*tau*fs*k/K_bar)
+    % -------------------------------------------------------
     c_true = zeros(K, L);
     for l = 1:L
-        for ki = 1:K
-            k = k_indices(ki);
-            c_true(ki,l) = alpha(l) * exp(-1j * 2*pi * tau(l) * fs * k / K_bar);
+        c_true(:,l) = alpha(l) * exp(-1j * 2*pi * tau(l) * fs * k_indices' / K_bar);
+    end
+
+    % -------------------------------------------------------
+    % True AR, BT from near-field array geometry
+    % -------------------------------------------------------
+    AR = zeros(NR, L);
+    BT = zeros(NT, L);
+    if nargin >= 5 && ~isempty(pl_all)
+        for l = 1:L
+            [AR(:,l), BT(:,l)] = near_field_array_response(params, pl_all(:,l));
         end
     end
 
-    % Precompute AR, BT from the true channel matrices
-    % Extract AR, BT by solving the channel (simpler: pass from generate_channel)
-    % Here we reconstruct from Hk_all to keep interfaces clean
-    % A better approach: pass AR/BT directly (see main)
-    % For now, we extract from channel structure.
-    % We use: Hk = AR * diag(alpha.*phase_k) * BT', so
-    %         sum_k c_k Hk / ||c_k||^2 ≈ AR * BT' (approx. when paths well-separated)
-    % We'll build AR, BT as outputs from generate_channel directly in run_monte_carlo.
-    AR = [];
-    BT = [];
-
     % -------------------------------------------------------
-    % Build received tensor Y = sum_l (W^T aR_l) o (F^T bT_l) o cl + V
-    % Equivalent to stacking Yk = W^T Hk F + Vk  for k=1..K
+    % Build noiseless received tensor: Y_clean(:,:,k) = W' * Hk * F_mat
     % -------------------------------------------------------
     Y_clean = zeros(F_size, T_size, K);
-
     for ki = 1:K
-        Hk = Hk_all(:,:,ki);   % NR x NT
-        Y_clean(:,:,ki) = W' * Hk * F_mat;   % F x T
+        Y_clean(:,:,ki) = W' * Hk_all(:,:,ki) * F_mat;   % F x T
     end
 
     % -------------------------------------------------------
-    % Add AWGN noise scaled to desired SNR
-    % SNR = ||Y_clean||_F^2 / ||V||_F^2
+    % Add AWGN: SNR = ||Y_clean||_F^2 / ||V||_F^2
     % -------------------------------------------------------
-    signal_power = norm(Y_clean(:))^2 / numel(Y_clean);
-    noise_var    = signal_power / (10^(SNR_dB/10));
-
-    % Complex Gaussian noise: real + imag each ~ N(0, noise_var/2)
-    V = sqrt(noise_var/2) * (randn(F_size, T_size, K) + 1j*randn(F_size, T_size, K));
+    sig_pwr   = norm(Y_clean(:))^2 / numel(Y_clean);
+    noise_var = sig_pwr / 10^(SNR_dB/10);
+    V = sqrt(noise_var/2) * (randn(F_size,T_size,K) + 1j*randn(F_size,T_size,K));
 
     Y = Y_clean + V;
 end

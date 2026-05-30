@@ -22,12 +22,12 @@ function result = run_single_trial(params)
         generate_channel(params);
 
     % --- Construct tensor ---
-    [Y, W, F_mat, ~, ~, ~] = construct_tensor(params, Hk, alpha, tau_true);
+    [Y, W, F_mat, ~, ~, ~] = construct_tensor(params, Hk, alpha, tau_true, pl_all);
 
     % --- CP-ALS ---
     [A_hat, B_hat, C_hat, ~, ~] = cp_als(Y, L, params);
-    AR_hat = pinv(W') * A_hat;
-    BT_hat = pinv(F_mat') * B_hat;
+    AR_hat = W * A_hat;
+    BT_hat = F_mat * B_hat;
 
     % --- ToA ---
     tau_hat = estimate_toa(C_hat, params);
