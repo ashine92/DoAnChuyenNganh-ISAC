@@ -8,8 +8,8 @@ function results = run_monte_carlo_vs_K(params)
 
     rng(params.rng_seed, 'twister');
 
-    K_vec = params.K_vec;
-    nK    = length(K_vec);
+    N_vec = params.N_vec;
+    nN    = length(N_vec);
     MC    = params.MC;
     L     = params.L;
 
@@ -18,16 +18,21 @@ function results = run_monte_carlo_vs_K(params)
 
     for mi = 1:length(methods)
         for fi = 1:length(fields)
-            results.(methods{mi}).(fields{fi}) = zeros(1, nK);
+            results.(methods{mi}).(fields{fi}) = zeros(1, nN);
         end
     end
     for fi = 1:length(fields)
-        results.CRB.(fields{fi}) = zeros(1, nK);
+        results.CRB.(fields{fi}) = zeros(1, nN);
     end
 
-    for ki = 1:nK
-        params.K = K_vec(ki);
-        fprintf('  K = %d (%d/%d)\n', K_vec(ki), ki, nK);
+    for ni = 1:nN
+        N1D = N_vec(ni);
+        params.NTy = N1D; params.NTz = N1D; params.NT = N1D^2;
+        params.NRy = N1D; params.NRz = N1D; params.NR = N1D^2;
+        params.F = N1D^2;
+        params.T = N1D^2;
+        
+        fprintf('  N = %dx%d=%d (%d/%d)\n', N1D, N1D, N1D^2, ni, nN);
 
         nmse_all = nan(MC, length(methods), length(fields));
         norm_sq_all = nan(MC, length(fields));
@@ -133,18 +138,18 @@ function results = run_monte_carlo_vs_K(params)
 
         for mi_ = 1:length(methods)
             for fi_ = 1:length(fields)
+                % Median MSE
                 med_mse = nanmedian(nmse_all(:, mi_, fi_));
-                mean_norm_sq = nanmean(norm_sq_all(:, fi_));
-                results.(methods{mi_}).(fields{fi_})(ki) = (med_mse / mean_norm_sq) * 100;
+                % Convert to Median RMSE
+                results.(methods{mi_}).(fields{fi_})(ni) = sqrt(med_mse);
             end
         end
         for fi_ = 1:length(fields)
             med_crb = nanmedian(crb_all(:, fi_));
-            mean_crb_norm_sq = nanmean(crb_norm_sq_all(:, fi_));
-            results.CRB.(fields{fi_})(ki) = (med_crb / mean_crb_norm_sq) * 100;
+            results.CRB.(fields{fi_})(ni) = sqrt(med_crb);
         end
     end
-    results.K_vec = K_vec; results.params = params;
+    results.N_vec = N_vec; results.params = params;
 end
 
 %% Local helpers

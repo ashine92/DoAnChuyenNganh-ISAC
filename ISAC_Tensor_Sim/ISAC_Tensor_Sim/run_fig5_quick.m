@@ -8,10 +8,12 @@ params = config();
 params.F = 49;
 params.T = 49;
 params.L = 3;
-params.MC = 30;
+params.MC = 300;
 params.SNR_dB = 15;
 params.K_vec = 10:10:50;
-
+params.run_music = false;
+params.run_pudd = false;
+params.run_crb = true;
 fprintf('--- Running Figure 5 (NMSE vs K, MC=%d) ---\n', params.MC);
 tic;
 results5 = run_monte_carlo_vs_K(params);
