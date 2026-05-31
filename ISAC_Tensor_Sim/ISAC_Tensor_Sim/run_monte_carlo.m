@@ -205,7 +205,7 @@ function crb_vec = extract_crb_nmse(CRB_p, CRB_pR, CRB_pl, ...
     end
     crb_pl = crb_pl_sum / (pl_norm_sq + eps);
 
-    crb_vec = [crb_az_R, crb_el_R, crb_az_T, crb_el_T, crb_tau, crb_pR, crb_pl] * 100;
+    crb_vec = [crb_az_R, crb_el_R, crb_az_T, crb_el_T, crb_tau, crb_pR, crb_pl];
 end
 
 
