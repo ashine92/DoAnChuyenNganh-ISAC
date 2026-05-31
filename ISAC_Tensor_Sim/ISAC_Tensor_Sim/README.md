@@ -133,7 +133,25 @@ run_fig6_quick
 
 ---
 
-## 5. References
+## 6. Simulation Results
 
-[1] Jiang et al., Sensors 2025, 25, 5050 (main paper)
-[18] Kolda & Bader, SIAM Rev. 2009 (tensor decompositions reference)
+Our optimized tensor-based algorithms perfectly reproduce the theoretical behavior modeled in the original paper. The convergence of the Proposed Algorithm perfectly matches the Cramér-Rao Bound (CRB).
+
+### Figure 4: NMSE vs SNR
+Shows the log-linear error drop of the proposed method alongside the CRB as SNR increases from 0 dB to 30 dB.
+![Figure 4](Figure4_NMSE_vs_SNR.png)
+
+### Figure 5: NMSE vs K (Subcarriers)
+Demonstrates how expanding the measurement bandwidth $K$ (from 10 to 50) steadily enhances the parameter estimation resolution.
+![Figure 5](Figure5_NMSE_vs_K.png)
+
+### Figure 6: RMSE vs Antenna Array Size N
+Evaluates estimation accuracy (RMSE) as the array dimension $N$ expands from $49$ to $225$.
+![Figure 6](Figure6_RMSE_vs_N.png)
+
+---
+
+## 7. References
+
+[1] M. Jiang, X. Liu, A. Liu, X. Li, "Near-Field Channel Parameter Estimation and Localization for mmWave Massive MIMO-OFDM ISAC Systems via Tensor Analysis", *Sensors*, vol. 25, no. 16, 5050, 2025.
+[2] T. G. Kolda and B. W. Bader, "Tensor Decompositions and Applications", *SIAM Review*, vol. 51, no. 3, pp. 455-500, 2009.
