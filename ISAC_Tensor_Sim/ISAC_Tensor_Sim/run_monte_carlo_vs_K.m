@@ -35,6 +35,9 @@ function results = run_monte_carlo_vs_K(params)
 
         for mc = 1:MC
             try
+                warning('off', 'MATLAB:rankDeficientMatrix');
+                warning('off', 'MATLAB:nearlySingularMatrix');
+                rng(mc);
                 [Hk, alpha, tau_true, az_R, el_R, az_T, el_T, pl_all, ~, ~] = ...
                     generate_channel(params);
                 [Y, W, F_mat, ~, AR_true, BT_true] = ...
@@ -115,12 +118,14 @@ function results = run_monte_carlo_vs_K(params)
 
                 % CRB
                 if isfield(params, 'run_crb') && params.run_crb
-                    [CRB_p,CRB_pR_mat,CRB_pl_arr] = compute_crb(params, ...
+                    [CRB_p, CRB_pR_mat, CRB_pl_arr] = compute_crb(params, ...
                         AR_true, BT_true, C_true, pl_all, params.SNR_dB);
-                    crb_acc = crb_acc + extract_crb_nmse_local(CRB_p, CRB_pR_mat, ...
-                        CRB_pl_arr, az_R, el_R, az_T, el_T, tau_true, params.pR, pl_all);
+                    crb_vec = extract_crb_nmse_local(CRB_p, CRB_pR_mat, CRB_pl_arr, ...
+                        az_R, el_R, az_T, el_T, tau_true, params.pR, pl_all);
+                    if ~any(crb_vec > 1000)
+                        crb_acc = crb_acc + crb_vec;
+                    end
                 end
-
                 n_valid = n_valid + 1;
             catch
             end
@@ -155,7 +160,7 @@ function crb_vec = extract_crb_nmse_local(CRB_p,CRB_pR,CRB_pl,az_R,el_R,az_T,el_
              sum(diag(CRB_p(3*L+1:4*L,3*L+1:4*L)))/(norm(el_T)^2+eps), ...
              sum(diag(CRB_p(4*L+1:5*L,4*L+1:5*L)))/(norm(tau)^2+eps), ...
              trace(CRB_pR)/(norm(pR)^2+eps), ...
-             sum(arrayfun(@(l)trace(CRB_pl(:,:,l)),1:L))/(sum(sum(pl.^2))+eps)];
+             sum(arrayfun(@(l)trace(CRB_pl(:,:,l)),1:L))/(sum(sum(pl.^2))+eps)] * 100;
 end
 
 function perm = match_paths_combined(az_est, el_est, tau_est, az_true, el_true, tau_true)

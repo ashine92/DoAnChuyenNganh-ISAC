@@ -36,9 +36,19 @@ function tau_hat = estimate_toa(C_hat, params)
         tau_grid_fine = linspace(max(0, tau_c - step_c), tau_c + step_c, 1000);
         
         C_dict_fine = exp(-1j * 2*pi * fs * k_indices * tau_grid_fine / K_bar);
-        corr_fine = abs(cl_hat' * C_dict_fine);
+        corr_fine = abs(cl_hat' * C_dict_fine).^2;
         [~, best_idx_f] = max(corr_fine);
         
-        tau_hat(l) = tau_grid_fine(best_idx_f);
+        % Off-grid Parabolic Interpolation to break the grid resolution limit
+        if best_idx_f > 1 && best_idx_f < length(tau_grid_fine)
+            y1 = corr_fine(best_idx_f - 1);
+            y2 = corr_fine(best_idx_f);
+            y3 = corr_fine(best_idx_f + 1);
+            delta = 0.5 * (y1 - y3) / (y1 - 2*y2 + y3 + eps);
+            step_f = tau_grid_fine(2) - tau_grid_fine(1);
+            tau_hat(l) = tau_grid_fine(best_idx_f) + delta * step_f;
+        else
+            tau_hat(l) = tau_grid_fine(best_idx_f);
+        end
     end
 end

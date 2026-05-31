@@ -31,14 +31,17 @@ function results = run_monte_carlo(params)
         params.SNR_dB = SNR_vec(si);
         fprintf('  SNR = %d dB (%d/%d)\n', SNR_vec(si), si, nSNR);
 
-        nmse_acc = zeros(length(methods), nF);
-        crb_acc  = zeros(1, nF);
+        nmse_all = nan(MC, length(methods), nF);
+        norm_sq_all = nan(MC, nF);
+        crb_all  = nan(MC, nF);
+        crb_norm_sq_all = nan(MC, nF);
         n_valid  = 0;
 
         for mc = 1:MC
             try
                 warning('off', 'MATLAB:rankDeficientMatrix');
                 warning('off', 'MATLAB:nearlySingularMatrix');
+                rng(mc); % Ensure same channel realization across SNRs for smooth curves
                 % --- Generate channel ---
                 [Hk, alpha, tau_true, az_R, el_R, az_T, el_T, pl_all, d_cR, d_cT] = ...
                     generate_channel(params);
@@ -96,27 +99,23 @@ function results = run_monte_carlo(params)
                                       az_T_hat, el_T_hat, pR_hat, params);
 
                 % --- NMSE computation ---
-                nmse_vals = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
+                [nmse_vals, norms_sq] = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
                     params.pR, pl_all, az_R_hat, el_R_hat, az_T_hat, el_T_hat, ...
                     tau_hat, pR_hat, pl_hat);
 
-                % Skip outlier trials (likely permutation failures)
-                %if any(nmse_vals > 100)
-                %    continue;
-                %end
-
-                nmse_acc(1,:) = nmse_acc(1,:) + nmse_vals;
+                nmse_all(mc, 1, :) = nmse_vals;
+                norm_sq_all(mc, :) = norms_sq;
 
                 % --- Baseline: MUSIC-LSPS ---
                 if isfield(params, 'run_music') && params.run_music
                     [az_R_mu, el_R_mu, az_T_mu, el_T_mu, tau_mu, pR_mu, pl_mu] = ...
                         music_lsps(AR_hat, BT_hat, C_hat, params, pl_all, ...
                                    tau_true, az_R, el_R, az_T, el_T);
-                    nmse_mu = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
+                    [nmse_mu, ~] = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
                         params.pR, pl_all, az_R_mu, el_R_mu, az_T_mu, el_T_mu, ...
                         tau_mu, pR_mu, pl_mu);
                     if ~any(nmse_mu > 100)
-                        nmse_acc(2,:) = nmse_acc(2,:) + nmse_mu;
+                        nmse_all(mc, 2, :) = nmse_mu;
                     end
                 end
 
@@ -125,11 +124,11 @@ function results = run_monte_carlo(params)
                     [az_R_pu, el_R_pu, az_T_pu, el_T_pu, tau_pu, pR_pu, pl_pu] = ...
                         pudd_baseline(AR_hat, BT_hat, C_hat, params, pl_all, ...
                                       tau_true, az_R, el_R, az_T, el_T);
-                    nmse_pu = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
+                    [nmse_pu, ~] = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
                         params.pR, pl_all, az_R_pu, el_R_pu, az_T_pu, el_T_pu, ...
                         tau_pu, pR_pu, pl_pu);
                     if ~any(nmse_pu > 100)
-                        nmse_acc(3,:) = nmse_acc(3,:) + nmse_pu;
+                        nmse_all(mc, 3, :) = nmse_pu;
                     end
                 end
 
@@ -137,9 +136,10 @@ function results = run_monte_carlo(params)
                 if isfield(params, 'run_crb') && params.run_crb
                     [CRB_p, CRB_pR_mat, CRB_pl_arr] = compute_crb(params, ...
                         AR_true, BT_true, C_true, pl_all, params.SNR_dB);
-                    crb_vec = extract_crb_nmse(CRB_p, CRB_pR_mat, CRB_pl_arr, ...
+                    [crb_vec, crb_norms_sq] = extract_crb_nmse(CRB_p, CRB_pR_mat, CRB_pl_arr, ...
                         az_R, el_R, az_T, el_T, tau_true, params.pR, pl_all);
-                    crb_acc = crb_acc + crb_vec;
+                    crb_all(mc, :) = crb_vec;
+                    crb_norm_sq_all(mc, :) = crb_norms_sq;
                 end
 
                 n_valid = n_valid + 1;
@@ -164,11 +164,16 @@ function results = run_monte_carlo(params)
 
         for mi = 1:length(methods)
             for fi = 1:nF
-                results.(methods{mi}).(fields{fi})(si) = nmse_acc(mi,fi) / n_valid;
+                % Median MSE / Mean Squared Norm * 100
+                med_mse = nanmedian(nmse_all(:, mi, fi));
+                mean_norm_sq = nanmean(norm_sq_all(:, fi));
+                results.(methods{mi}).(fields{fi})(si) = (med_mse / mean_norm_sq) * 100;
             end
         end
         for fi = 1:nF
-            results.CRB.(fields{fi})(si) = crb_acc(fi) / n_valid;
+            med_crb = nanmedian(crb_all(:, fi));
+            mean_crb_norm_sq = nanmean(crb_norm_sq_all(:, fi));
+            results.CRB.(fields{fi})(si) = (med_crb / mean_crb_norm_sq) * 100;
         end
     end
 
@@ -178,7 +183,7 @@ end
 
 
 %% ---- Helper: Extract CRB as normalized MSE value -----------------------
-function crb_vec = extract_crb_nmse(CRB_p, CRB_pR, CRB_pl, ...
+function [crb_vec, norms_sq] = extract_crb_nmse(CRB_p, CRB_pR, CRB_pl, ...
     az_R, el_R, az_T, el_T, tau, pR, pl)
 
     L = length(az_R);
@@ -187,15 +192,16 @@ function crb_vec = extract_crb_nmse(CRB_p, CRB_pR, CRB_pl, ...
     % Guard against dimension mismatch
     if dim < 5*L
         crb_vec = zeros(1, 7);
+        norms_sq = zeros(1, 7);
         return;
     end
 
-    crb_az_R = sum(diag(CRB_p(1:L, 1:L))) / (norm(az_R)^2 + eps);
-    crb_el_R = sum(diag(CRB_p(L+1:2*L, L+1:2*L))) / (norm(el_R)^2 + eps);
-    crb_az_T = sum(diag(CRB_p(2*L+1:3*L, 2*L+1:3*L))) / (norm(az_T)^2 + eps);
-    crb_el_T = sum(diag(CRB_p(3*L+1:4*L, 3*L+1:4*L))) / (norm(el_T)^2 + eps);
-    crb_tau  = sum(diag(CRB_p(4*L+1:5*L, 4*L+1:5*L))) / (norm(tau)^2 + eps);
-    crb_pR   = trace(CRB_pR) / (norm(pR)^2 + eps);
+    crb_az_R = sum(diag(CRB_p(1:L, 1:L)));
+    crb_el_R = sum(diag(CRB_p(L+1:2*L, L+1:2*L)));
+    crb_az_T = sum(diag(CRB_p(2*L+1:3*L, 2*L+1:3*L)));
+    crb_el_T = sum(diag(CRB_p(3*L+1:4*L, 3*L+1:4*L)));
+    crb_tau  = sum(diag(CRB_p(4*L+1:5*L, 4*L+1:5*L)));
+    crb_pR   = trace(CRB_pR);
 
     crb_pl_sum = 0;
     pl_norm_sq = 0;
@@ -203,9 +209,10 @@ function crb_vec = extract_crb_nmse(CRB_p, CRB_pR, CRB_pl, ...
         crb_pl_sum = crb_pl_sum + trace(CRB_pl(:,:,l));
         pl_norm_sq = pl_norm_sq + norm(pl(:,l))^2;
     end
-    crb_pl = crb_pl_sum / (pl_norm_sq + eps);
+    crb_pl = crb_pl_sum;
 
     crb_vec = [crb_az_R, crb_el_R, crb_az_T, crb_el_T, crb_tau, crb_pR, crb_pl];
+    norms_sq = [norm(az_R)^2, norm(el_R)^2, norm(az_T)^2, norm(el_T)^2, norm(tau)^2, norm(pR)^2, pl_norm_sq];
 end
 
 

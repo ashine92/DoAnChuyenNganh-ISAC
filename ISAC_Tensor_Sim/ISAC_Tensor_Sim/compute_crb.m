@@ -280,9 +280,7 @@ function [CRB_params, CRB_pR, CRB_pl] = compute_crb(params, AR, BT, C, pl_all, S
     
     Omega_scaled = D_scale * Omega * D_scale;
     
-    disp('diag(Omega) values:');
-    disp(diag(Omega)');
-    
+    % No debug printing
     % Regularize scaled matrix gently
     Omega_scaled = Omega_scaled + eye(5*L) * 1e-10;
     

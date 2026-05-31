@@ -9,8 +9,11 @@ params.F = 49;  % F=NR to ensure W'W=I (orthogonal DFT)
 params.T = 49;  % T=NT to ensure F'F=I
 params.K = 10;  % Restored to 10 as in paper
 params.L = 3;
-params.MC = 30;
+params.MC = 300;
 params.SNR_dB_vec = 0:5:30;
+params.run_music = false;
+params.run_pudd = false;
+params.run_crb = true;
 
 fprintf('--- Running Figure 4 (NMSE vs SNR, MC=%d) ---\n', params.MC);
 tic;
