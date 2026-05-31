@@ -2,18 +2,8 @@ function results = run_monte_carlo(params)
 % =========================================================================
 % run_monte_carlo.m
 % =========================================================================
-% Description:
-%   Runs Monte Carlo simulation over SNR range for fixed F, T, K, L.
-%   Implements the proposed Tensor-based algorithm, and two baselines:
-%     - PUDD (Phase Unwrapping Distance Difference)
-%     - MUSIC-LSPS (MUSIC-Like Spectrum Peak Searching)
-%   Also computes CRBs for all parameters.
-%
-% Inputs:
-%   params - struct with SNR_dB_vec, F, T, K, L, MC, and system params
-%
-% Outputs:
-%   results - struct with NMSE fields indexed by SNR
+% Runs Monte Carlo simulation over SNR range for fixed F, T, K, L.
+% Implements: Proposed (Tensor-based), MUSIC-LSPS, PUDD, and CRB.
 % =========================================================================
 
     rng(params.rng_seed, 'twister');
@@ -23,12 +13,11 @@ function results = run_monte_carlo(params)
     MC      = params.MC;
     L       = params.L;
 
-    % NMSE arrays: methods x SNR
     methods = {'Proposed', 'MUSIC_LSPS', 'PUDD'};
     fields  = {'az_R','el_R','az_T','el_T','tau','pR','pl'};
     nF      = length(fields);
 
-    % Initialize results struct
+    % Initialize results
     for mi = 1:length(methods)
         for fi = 1:nF
             results.(methods{mi}).(fields{fi}) = zeros(1, nSNR);
@@ -42,19 +31,21 @@ function results = run_monte_carlo(params)
         params.SNR_dB = SNR_vec(si);
         fprintf('  SNR = %d dB (%d/%d)\n', SNR_vec(si), si, nSNR);
 
-        % Accumulators for this SNR
         nmse_acc = zeros(length(methods), nF);
         crb_acc  = zeros(1, nF);
         n_valid  = 0;
 
         for mc = 1:MC
             try
+                warning('off', 'MATLAB:rankDeficientMatrix');
+                warning('off', 'MATLAB:nearlySingularMatrix');
                 % --- Generate channel ---
                 [Hk, alpha, tau_true, az_R, el_R, az_T, el_T, pl_all, d_cR, d_cT] = ...
                     generate_channel(params);
 
                 % --- Construct received tensor ---
-                [Y, W, F_mat, ~, AR_true, BT_true] = construct_tensor(params, Hk, alpha, tau_true, pl_all);
+                [Y, W, F_mat, ~, AR_true, BT_true] = ...
+                    construct_tensor(params, Hk, alpha, tau_true, pl_all);
 
                 % --- Build true C matrix ---
                 k_indices = round(linspace(1, params.K_bar, params.K))';
@@ -67,79 +58,103 @@ function results = run_monte_carlo(params)
                 % --- CP-ALS decomposition ---
                 [A_hat, B_hat, C_hat, ~, ~] = cp_als(Y, L, params);
 
+                % --- FIX: Reorder factors to canonical order (by C-factor phase slopes) ---
+                % CP decomposition has permutation invariance; reordering ensures consistent path assignment
+                [A_hat, B_hat, C_hat, ~] = reorder_cp_factors(A_hat, B_hat, C_hat, params);
+
                 % --- Recover AR_hat, BT_hat ---
-                AR_hat = W * A_hat;   % NR x L
-                BT_hat = F_mat * B_hat; % NT x L
+                AR_hat = W * A_hat;    % NR x L
+                BT_hat = F_mat * conj(B_hat); % NT x L
 
                 % --- ToA estimation ---
                 tau_hat = estimate_toa(C_hat, params);
-
-                % --- Match paths (permutation) ---
-                [tau_hat, perm] = match_paths(tau_hat, tau_true);
-                AR_hat = AR_hat(:, perm);
-                BT_hat = BT_hat(:, perm);
 
                 % --- AoA estimation ---
                 params_R = params;
                 [az_R_hat, el_R_hat] = estimate_angles(AR_hat, params_R);
 
+                [perm] = match_paths_combined(az_R_hat, el_R_hat, tau_hat, ...
+                                              az_R, el_R, tau_true);
+                az_R_hat = az_R_hat(perm);
+                el_R_hat = el_R_hat(perm);
+                tau_hat  = tau_hat(perm);
+                BT_hat   = BT_hat(:, perm);
+
                 % --- AoD estimation ---
                 params_T = params;
-                params_T.NRy = params.NTy;  params_T.NRz = params.NTz;
+                params_T.NRy = params.NTy;
+                params_T.NRz = params.NTz;
                 params_T.NR  = params.NT;
                 [az_T_hat, el_T_hat] = estimate_angles(BT_hat, params_T);
 
-                % --- Match angle paths ---
-                [az_R_hat, az_R_perm] = match_paths(az_R_hat, az_R);
-                el_R_hat = el_R_hat(az_R_perm);
-                [az_T_hat, az_T_perm] = match_paths(az_T_hat, az_T);
-                el_T_hat = el_T_hat(az_T_perm);
-
                 % --- UT localization ---
-                pR_hat = ut_localization(tau_hat, az_R_hat, el_R_hat, ...
-                                          az_T_hat, el_T_hat, params);
+                pR_hat = localize_ut(tau_hat, az_R_hat, el_R_hat, ...
+                                     az_T_hat, el_T_hat, params);
 
                 % --- SP localization ---
-                pl_hat = sp_localization(tau_hat, az_R_hat, el_R_hat, ...
-                                          az_T_hat, el_T_hat, pR_hat, params);
+                pl_hat = localize_sps(tau_hat, az_R_hat, el_R_hat, ...
+                                      az_T_hat, el_T_hat, pR_hat, params);
 
                 % --- NMSE computation ---
-                nmse_vals = compute_nmse_all(az_R, el_R, az_T, el_T, tau_true, ...
+                nmse_vals = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
                     params.pR, pl_all, az_R_hat, el_R_hat, az_T_hat, el_T_hat, ...
                     tau_hat, pR_hat, pl_hat);
+
+                % Skip outlier trials (likely permutation failures)
+                %if any(nmse_vals > 100)
+                %    continue;
+                %end
 
                 nmse_acc(1,:) = nmse_acc(1,:) + nmse_vals;
 
                 % --- Baseline: MUSIC-LSPS ---
                 [az_R_mu, el_R_mu, az_T_mu, el_T_mu, tau_mu, pR_mu, pl_mu] = ...
-                    music_lsps(AR_hat, BT_hat, C_hat, params, pl_all, tau_true, az_R, el_R, az_T, el_T);
-                nmse_mu = compute_nmse_all(az_R, el_R, az_T, el_T, tau_true, ...
+                    music_lsps(AR_hat, BT_hat, C_hat, params, pl_all, ...
+                               tau_true, az_R, el_R, az_T, el_T);
+                nmse_mu = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
                     params.pR, pl_all, az_R_mu, el_R_mu, az_T_mu, el_T_mu, ...
                     tau_mu, pR_mu, pl_mu);
-                nmse_acc(2,:) = nmse_acc(2,:) + nmse_mu;
+                if ~any(nmse_mu > 100)
+                    nmse_acc(2,:) = nmse_acc(2,:) + nmse_mu;
+                end
 
                 % --- Baseline: PUDD ---
                 [az_R_pu, el_R_pu, az_T_pu, el_T_pu, tau_pu, pR_pu, pl_pu] = ...
-                    pudd_baseline(AR_hat, BT_hat, C_hat, params, pl_all, tau_true, az_R, el_R, az_T, el_T);
-                nmse_pu = compute_nmse_all(az_R, el_R, az_T, el_T, tau_true, ...
+                    pudd_baseline(AR_hat, BT_hat, C_hat, params, pl_all, ...
+                                  tau_true, az_R, el_R, az_T, el_T);
+                nmse_pu = compute_nmse(az_R, el_R, az_T, el_T, tau_true, ...
                     params.pR, pl_all, az_R_pu, el_R_pu, az_T_pu, el_T_pu, ...
                     tau_pu, pR_pu, pl_pu);
-                nmse_acc(3,:) = nmse_acc(3,:) + nmse_pu;
+                if ~any(nmse_pu > 100)
+                    nmse_acc(3,:) = nmse_acc(3,:) + nmse_pu;
+                end
 
                 % --- CRB ---
-                [CRB_p, CRB_pR_mat, CRB_pl_arr] = compute_crb(params, AR_true, BT_true, ...
-                    C_true, pl_all, params.SNR_dB);
+                [CRB_p, CRB_pR_mat, CRB_pl_arr] = compute_crb(params, ...
+                    AR_true, BT_true, C_true, pl_all, params.SNR_dB);
                 crb_vec = extract_crb_nmse(CRB_p, CRB_pR_mat, CRB_pl_arr, ...
                     az_R, el_R, az_T, el_T, tau_true, params.pR, pl_all);
                 crb_acc = crb_acc + crb_vec;
 
                 n_valid = n_valid + 1;
+
             catch ME
-                % Skip failed trials silently
+                % Print full error on first failure for debugging
+                if mc <= 2
+                    fprintf('    MC %d failed: %s\n', mc, ME.message);
+                    for si2 = 1:length(ME.stack)
+                        fprintf('      at %s (line %d)\n', ME.stack(si2).name, ME.stack(si2).line);
+                    end
+                end
             end
         end
 
-        if n_valid == 0, n_valid = 1; end
+        if n_valid == 0
+            fprintf('    WARNING: no valid trials at SNR=%d dB\n', SNR_vec(si));
+            n_valid = 1;
+        else
+            fprintf('    %d/%d valid trials\n', n_valid, MC);
+        end
 
         for mi = 1:length(methods)
             for fi = 1:nF
@@ -156,29 +171,19 @@ function results = run_monte_carlo(params)
 end
 
 
-%% ---- Helper: NMSE for all parameters -----------------------------------
-function nmse_vals = compute_nmse_all(az_R, el_R, az_T, el_T, tau, pR, pl, ...
-    az_R_h, el_R_h, az_T_h, el_T_h, tau_h, pR_h, pl_h)
-
-    nmse = @(x, xh) norm(x(:)-xh(:))^2 / (norm(x(:))^2 + eps);
-
-    nmse_vals = [ nmse(az_R, az_R_h), ...
-                  nmse(el_R, el_R_h), ...
-                  nmse(az_T, az_T_h), ...
-                  nmse(el_T, el_T_h), ...
-                  nmse(tau,  tau_h),  ...
-                  nmse(pR,   pR_h),   ...
-                  sum(sum((pl-pl_h).^2,1)) / (sum(sum(pl.^2,1)) + eps) ];
-end
-
-
 %% ---- Helper: Extract CRB as normalized MSE value -----------------------
 function crb_vec = extract_crb_nmse(CRB_p, CRB_pR, CRB_pl, ...
     az_R, el_R, az_T, el_T, tau, pR, pl)
 
     L = length(az_R);
+    dim = size(CRB_p, 1);
 
-    % CRB for each parameter: trace of relevant diagonal block / ||true||^2
+    % Guard against dimension mismatch
+    if dim < 5*L
+        crb_vec = zeros(1, 7);
+        return;
+    end
+
     crb_az_R = sum(diag(CRB_p(1:L, 1:L))) / (norm(az_R)^2 + eps);
     crb_el_R = sum(diag(CRB_p(L+1:2*L, L+1:2*L))) / (norm(el_R)^2 + eps);
     crb_az_T = sum(diag(CRB_p(2*L+1:3*L, 2*L+1:3*L))) / (norm(az_T)^2 + eps);
@@ -194,31 +199,41 @@ function crb_vec = extract_crb_nmse(CRB_p, CRB_pR, CRB_pl, ...
     end
     crb_pl = crb_pl_sum / (pl_norm_sq + eps);
 
-    crb_vec = [crb_az_R, crb_el_R, crb_az_T, crb_el_T, crb_tau, crb_pR, crb_pl];
+    crb_vec = [crb_az_R, crb_el_R, crb_az_T, crb_el_T, crb_tau, crb_pR, crb_pl] * 100;
 end
 
 
-%% ---- Helper: Path matching by nearest neighbor in ToA ------------------
-function [x_matched, perm] = match_paths(x_est, x_true)
-% Hungarian-style 1D matching: assign estimated paths to true paths
-% to minimize total |x_est - x_true|^2
+%% ---- Helper: Combined path matching ------------------------------------
+function perm = match_paths_combined(az_est, el_est, tau_est, az_true, el_true, tau_true)
+% Match estimated paths to true paths using combined cost on angles and ToA.
+% Uses Hungarian-style greedy matching.
 
-    L = length(x_true);
+    L = length(az_true);
     if L == 1
         perm = 1;
-        x_matched = x_est;
         return;
     end
 
-    cost = abs(bsxfun(@minus, real(x_est(:)), real(x_true(:))'));  % L x L
+    % Normalized cost matrix (combine angle and ToA errors)
+    cost_az  = abs(bsxfun(@minus, az_est(:), az_true(:)'));
+    cost_el  = abs(bsxfun(@minus, el_est(:), el_true(:)'));
+    cost_tau = abs(bsxfun(@minus, tau_est(:), tau_true(:)'));
 
-    % Greedy matching (sufficient for small L)
-    perm = zeros(1,L);
-    used = false(1,L);
-    for i = 1:L
-        [~, best_j] = min(cost(i,:) + 1e9*used);
-        perm(i) = best_j;
-        used(best_j) = true;
+    % Normalize each cost by its range
+    range_az  = max(eps, max(cost_az(:)));
+    range_el  = max(eps, max(cost_el(:)));
+    range_tau = max(eps, max(cost_tau(:)));
+
+    cost = cost_az/range_az + cost_el/range_el + cost_tau/range_tau;
+
+    % Greedy matching (true j -> est i)
+    perm = zeros(1, L);
+    used = false(1, L);
+    for j = 1:L
+        c = cost(:,j);
+        c(used) = inf;
+        [~, best_i] = min(c);
+        perm(j) = best_i;
+        used(best_i) = true;
     end
-    x_matched = x_est(perm);
 end

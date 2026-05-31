@@ -1,6 +1,7 @@
 function plot_fig4(results, params)
-% NMSE vs SNR for proposed, MUSIC-LSPS, PUDD, CRB
-% Reproduces Figure 4: 6 subplots (az_R, el_R, az_T, el_T, SPs pos, UT pos)
+% =========================================================================
+% plot_fig4.m — Plot NMSE vs SNR (Figure 4)  [LINEAR scale, matching paper]
+% =========================================================================
 
     SNR_vec = results.SNR_vec;
     fields  = {'az_R','el_R','az_T','el_T','pl','pR'};
@@ -22,19 +23,19 @@ function plot_fig4(results, params)
         hold on; grid on; box on;
 
         for mi = 1:3
-            meth_data = results.(methods{mi}).(fields{pi_});
-            semilogy(SNR_vec, meth_data, markers{mi}, 'Color', colors{mi}, ...
+            data = results.(methods{mi}).(fields{pi_});
+            plot(SNR_vec, data, markers{mi}, 'Color', colors{mi}, ...
                 'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{mi});
         end
         % CRB
         crb_data = results.CRB.(fields{pi_});
-        semilogy(SNR_vec, crb_data, markers{4}, 'Color', colors{4}, ...
+        plot(SNR_vec, crb_data, markers{4}, 'Color', colors{4}, ...
             'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{4});
 
         xlabel('SNR (dB)', 'FontSize', 10);
         ylabel(ylabels{pi_}, 'FontSize', 10);
         title(panel_labels{pi_}, 'FontSize', 9);
-        legend('Location','northeast', 'FontSize', 8);
+        legend('Location','northeast', 'FontSize', 7);
         xlim([SNR_vec(1), SNR_vec(end)]);
         set(gca, 'FontSize', 9);
     end

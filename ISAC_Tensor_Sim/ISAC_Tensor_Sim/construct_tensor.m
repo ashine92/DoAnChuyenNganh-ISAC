@@ -2,7 +2,7 @@ function [Y, W, F_mat, c_true, AR, BT] = construct_tensor(params, Hk_all, alpha,
 % =========================================================================
 % construct_tensor.m
 % =========================================================================
-% Description:
+% * Mathematical Background:
 %   Constructs the received signal tensor Y ∈ C^{F x T x K} and returns
 %   the true beamforming matrices W, F and the true factor matrices.
 %
@@ -12,14 +12,14 @@ function [Y, W, F_mat, c_true, AR, BT] = construct_tensor(params, Hk_all, alpha,
 %   W (NR×F) and F_mat (NT×T): first F/T columns of the normalized DFT matrix.
 %   Column orthogonality: W'*W = I_F,  F_mat'*F_mat = I_T.
 %
-% Inputs:
+% * Inputs:
 %   params   - struct: F, T, K, K_bar, NR, NT, fs, L, SNR_dB
 %   Hk_all   - NR x NT x K channel matrices
 %   alpha    - L x 1 complex gains
 %   tau      - L x 1 time delays [s]
 %   pl_all   - 3 x L SP positions [m]  (used to build AR, BT)
 %
-% Outputs:
+% * Outputs:
 %   Y      - F x T x K noisy received tensor
 %   W      - NR x F combining matrix (truncated DFT)
 %   F_mat  - NT x T precoding matrix (truncated DFT)
@@ -27,7 +27,12 @@ function [Y, W, F_mat, c_true, AR, BT] = construct_tensor(params, Hk_all, alpha,
 %   AR     - NR x L true array responses at UT
 %   BT     - NT x L true array responses at BS
 %
-% Runtime: O(F*T*K + NR*NT*K)
+% * MATLAB Implementation:
+%   Computes beamforming and combining matrices W and F_mat using dftmtx.
+%   Constructs the clean tensor slice by slice, then adds complex AWGN.
+%
+% * Complexity Analysis:
+%   O(F*T*K + NR*NT*K)
 % =========================================================================
 
     F_size = params.F;
@@ -68,7 +73,8 @@ function [Y, W, F_mat, c_true, AR, BT] = construct_tensor(params, Hk_all, alpha,
 
     % -------------------------------------------------------
     % True C-factor matrix: c_true(:,l) = alpha_l * c_bar(tau_l)
-    %   c_bar(tau, k) = exp(-j2*pi*tau*fs*k/K_bar)
+    %   c_bar(tau, k) = exp(-j2*pi*tau*k/K_bar)
+    % FIXED: Removed fs multiplication (tau is normalized OFDM delay)
     % -------------------------------------------------------
     c_true = zeros(K, L);
     for l = 1:L
@@ -82,7 +88,7 @@ function [Y, W, F_mat, c_true, AR, BT] = construct_tensor(params, Hk_all, alpha,
     BT = zeros(NT, L);
     if nargin >= 5 && ~isempty(pl_all)
         for l = 1:L
-            [AR(:,l), BT(:,l)] = near_field_array_response(params, pl_all(:,l));
+            [AR(:,l), BT(:,l)] = nearfield_array_response(params, pl_all(:,l));
         end
     end
 

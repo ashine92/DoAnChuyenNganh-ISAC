@@ -1,5 +1,7 @@
 function plot_fig5(results, params)
-% NMSE vs K for different algorithms
+% =========================================================================
+% plot_fig5.m — Plot NMSE vs K (Figure 5)
+% =========================================================================
 
     K_vec   = results.K_vec;
     fields  = {'az_R','el_R','az_T','el_T','pl','pR'};
@@ -20,19 +22,21 @@ function plot_fig5(results, params)
         subplot(2,3,pi_);
         hold on; grid on; box on;
         for mi = 1:3
-            meth_data = results.(methods{mi}).(fields{pi_});
-            semilogy(K_vec, meth_data, markers{mi}, 'Color', colors{mi}, ...
+            data = results.(methods{mi}).(fields{pi_});
+            data = max(data, 1e-12);
+            semilogy(K_vec, data, markers{mi}, 'Color', colors{mi}, ...
                 'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{mi});
         end
         crb_data = results.CRB.(fields{pi_});
+        crb_data = max(crb_data, 1e-12);
         semilogy(K_vec, crb_data, markers{4}, 'Color', colors{4}, ...
             'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{4});
         xlabel('K', 'FontSize', 10);
         ylabel(ylabels{pi_}, 'FontSize', 10);
         title(panel_labels{pi_}, 'FontSize', 9);
-        legend('Location','northeast', 'FontSize', 8);
+        legend('Location','southwest', 'FontSize', 7);
         xlim([K_vec(1), K_vec(end)]);
-        set(gca, 'FontSize', 9);
+        set(gca, 'FontSize', 9, 'YScale', 'log');
     end
     sgtitle(sprintf('Fig.5: NMSE vs K  (F=T=%d, SNR=%d dB, L=%d)', ...
         params.F, params.SNR_dB, params.L), 'FontSize', 11);

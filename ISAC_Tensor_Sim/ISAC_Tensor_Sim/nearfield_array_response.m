@@ -1,8 +1,8 @@
-function [aR, bT] = near_field_array_response(params, pl)
+function [aR, bT] = nearfield_array_response(params, pl)
 % =========================================================================
-% near_field_array_response.m
+% nearfield_array_response.m
 % =========================================================================
-% Description:
+% * Mathematical Background:
 %   Computes the exact near-field UPA array response vectors aR and bT
 %   for the l-th scattering path, using the spherical wavefront model.
 %   Eq. (12) from paper:
@@ -14,15 +14,20 @@ function [aR, bT] = near_field_array_response(params, pl)
 %   with ny_R in [-(NRy-1)/2 ... (NRy-1)/2]
 %        nz_R in [-(NRz-1)/2 ... (NRz-1)/2]
 %
-% Inputs:
+% * Inputs:
 %   params - struct with fields: NRy, NRz, NTy, NTz, d, lambda, pT, pR
 %   pl     - 3x1 position of l-th scattering point [m]
 %
-% Outputs:
+% * Outputs:
 %   aR - NR x 1 array response at UT (receiver)
 %   bT - NT x 1 array response at BS (transmitter)
 %
-% Runtime: O(NR + NT)  (fully vectorized)
+% * MATLAB Implementation:
+%   Uses meshgrid to create antenna positions and computes distances
+%   using vectorized Euclidean norm.
+%
+% * Complexity Analysis:
+%   O(NR + NT) (fully vectorized)
 % =========================================================================
 
     lambda = params.lambda;

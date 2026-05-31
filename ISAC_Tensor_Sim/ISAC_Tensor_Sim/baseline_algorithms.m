@@ -144,8 +144,8 @@ function [az_R_hat, el_R_hat, az_T_hat, el_T_hat, tau_hat, pR_hat, pl_hat] = ...
     el_T_hat = el_T_hat + grid_res * randn(L,1) * 0.15;
 
     % Localization
-    pR_hat = ut_localization(tau_hat, az_R_hat, el_R_hat, az_T_hat, el_T_hat, params);
-    pl_hat = sp_localization(tau_hat, az_R_hat, el_R_hat, az_T_hat, el_T_hat, pR_hat, params);
+    pR_hat = localize_ut(tau_hat, az_R_hat, el_R_hat, az_T_hat, el_T_hat, params);
+    pl_hat = localize_sps(tau_hat, az_R_hat, el_R_hat, az_T_hat, el_T_hat, pR_hat, params);
 end
 
 
@@ -177,9 +177,8 @@ function [az_R_hat, el_R_hat, az_T_hat, el_T_hat, tau_hat, pR_hat, pl_hat] = ...
     params_T = params; params_T.NRy=params.NTy; params_T.NRz=params.NTz; params_T.NR=params.NT;
     [az_T_hat, el_T_hat] = estimate_angles(BT_hat, params_T);
 
-    % Sort and match
-    [az_R_hat, sp_R] = sort(az_R_hat); el_R_hat = el_R_hat(sp_R);
-    [az_T_hat, sp_T] = sort(az_T_hat); el_T_hat = el_T_hat(sp_T);
+    % PUDD inherits the column ordering from CP-ALS factors AR_hat, BT_hat
+    % Do not sort them, as that breaks pairing with ToA and distances.
 
     % ToA from correlation
     tau_hat = estimate_toa(C_hat, params);
@@ -236,6 +235,6 @@ function [az_R_hat, el_R_hat, az_T_hat, el_T_hat, tau_hat, pR_hat, pl_hat] = ...
     el_T_hat = max(0.01, min(pi-0.01, el_T_hat));
 
     % Localization with accumulated errors
-    pR_hat = ut_localization(tau_hat, az_R_hat, el_R_hat, az_T_hat, el_T_hat, params);
-    pl_hat = sp_localization(tau_hat, az_R_hat, el_R_hat, az_T_hat, el_T_hat, pR_hat, params);
+    pR_hat = localize_ut(tau_hat, az_R_hat, el_R_hat, az_T_hat, el_T_hat, params);
+    pl_hat = localize_sps(tau_hat, az_R_hat, el_R_hat, az_T_hat, el_T_hat, pR_hat, params);
 end

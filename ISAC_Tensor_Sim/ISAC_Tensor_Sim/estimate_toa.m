@@ -1,64 +1,44 @@
 function tau_hat = estimate_toa(C_hat, params)
 % =========================================================================
-% estimate_toa.m
+% estimate_toa.m  - Robust 1D correlation search
 % =========================================================================
-% Description:
-%   Estimates the Time of Arrival (ToA) for each path from the estimated
-%   factor matrix C_hat using maximum likelihood (column correlation).
+% * Mathematical Background:
+%   Estimates Time of Arrival (ToA) from C_hat by maximizing correlation:
+%   tau_hat = argmax_tau | c_hat^H * c_true(tau) |
 %
-%   Mathematical derivation (Appendix A, Eq. 32):
-%     tau_hat_l = argmax_{tau_l} |c_hat_l^H * c_bar(tau_l)|^2
-%                                 / (||c_bar(tau_l)||^2 * ||c_hat_l||^2)
-%
-%   where c_bar(tau) = [exp(-j2*pi*tau*fs*k1/K_bar), ...,
-%                        exp(-j2*pi*tau*fs*kK/K_bar)]^T  is the steering
-%   vector for a candidate delay tau.
-%
-%   One-dimensional exhaustive search over Ns uniformly spaced points
-%   in the range [0, K_bar/fs].
-%
-% Inputs:
-%   C_hat  - K x L estimated factor matrix (subcarrier dimension)
-%   params - struct with fields: K, K_bar, fs, Ns, L
-%
-% Outputs:
-%   tau_hat - L x 1 estimated time delays [s]
-%
-% Runtime: O(Ns * L * K)
+%   This avoids the phase unwrapping ambiguity that occurs when K is small
+%   and adjacent subcarrier phase steps exceed pi.
 % =========================================================================
 
     K     = params.K;
     K_bar = params.K_bar;
     fs    = params.fs;
-    Ns    = params.Ns;
     L     = params.L;
 
-    % Search range: tau in [0, K_bar/fs]
-    tau_max    = K_bar / fs;
-    tau_search = linspace(0, tau_max, Ns);
-
-    % Subcarrier indices (same selection as in channel generation)
-    k_indices = round(linspace(1, K_bar, K))';   % K x 1
-
-    % Precompute steering matrix: K x Ns
-    % c_bar(tau, k) = exp(-j2*pi*tau*fs*k/K_bar)
-    % Phase matrix: K x Ns
-    phase_mat = exp(-1j * 2*pi/K_bar * fs * (k_indices * tau_search));  % K x Ns
-
+    k_indices = round(linspace(1, K_bar, K))';
     tau_hat = zeros(L, 1);
 
+    % Search grid: 0 to 200 ns
+    % For higher precision, we do a two-step search (coarse then fine)
+    tau_grid_coarse = linspace(0, 200e-9, 1000); 
+
     for l = 1:L
-        cl_hat = C_hat(:, l);              % K x 1
-        cl_hat_norm = norm(cl_hat);
-
-        % Correlation with each candidate: 1 x Ns
-        corr_vals = abs(cl_hat' * phase_mat).^2;
-
-        % Normalize by ||c_bar||^2 * ||c_hat||^2
-        c_bar_norm_sq = sum(abs(phase_mat).^2, 1);   % 1 x Ns (all equal to K)
-        corr_norm     = corr_vals ./ (c_bar_norm_sq * cl_hat_norm^2 + eps);
-
-        [~, idx]   = max(corr_norm);
-        tau_hat(l) = tau_search(idx);
+        cl_hat = C_hat(:, l);
+        
+        % Coarse search
+        C_dict_coarse = exp(-1j * 2*pi * fs * k_indices * tau_grid_coarse / K_bar); % K x 1000
+        corr_coarse = abs(cl_hat' * C_dict_coarse);
+        [~, best_idx_c] = max(corr_coarse);
+        tau_c = tau_grid_coarse(best_idx_c);
+        
+        % Fine search around the coarse estimate (+/- 1 coarse step)
+        step_c = tau_grid_coarse(2) - tau_grid_coarse(1);
+        tau_grid_fine = linspace(max(0, tau_c - step_c), tau_c + step_c, 1000);
+        
+        C_dict_fine = exp(-1j * 2*pi * fs * k_indices * tau_grid_fine / K_bar);
+        corr_fine = abs(cl_hat' * C_dict_fine);
+        [~, best_idx_f] = max(corr_fine);
+        
+        tau_hat(l) = tau_grid_fine(best_idx_f);
     end
 end
