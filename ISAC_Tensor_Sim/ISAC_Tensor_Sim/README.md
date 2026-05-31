@@ -154,4 +154,5 @@ Evaluates estimation accuracy (RMSE) as the array dimension $N$ expands from $49
 ## 7. References
 
 [1] M. Jiang, X. Liu, A. Liu, X. Li, "Near-Field Channel Parameter Estimation and Localization for mmWave Massive MIMO-OFDM ISAC Systems via Tensor Analysis", *Sensors*, vol. 25, no. 16, 5050, 2025.
+
 [2] T. G. Kolda and B. W. Bader, "Tensor Decompositions and Applications", *SIAM Review*, vol. 51, no. 3, pp. 455-500, 2009.
