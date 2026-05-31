@@ -1,35 +1,43 @@
-function nmse = compute_nmse(x_true, x_hat)
+function [nmse_vals, norms_sq] = compute_nmse(az_R, el_R, az_T, el_T, tau, pR, pl, ...
+    az_R_h, el_R_h, az_T_h, el_T_h, tau_h, pR_h, pl_h)
 % =========================================================================
-% compute_nmse.m  (utils/)
+% compute_nmse.m
 % =========================================================================
-% Description:
-%   Computes the Normalized Mean Square Error (NMSE) between true and
-%   estimated parameter vectors.
+% * Mathematical Background:
+%   Computes the Normalized Mean Square Error (NMSE) for the channel 
+%   parameters and localization.
+%   NMSE(gamma) = ||gamma - gamma_hat||^2 / ||gamma||^2
 %
-%   NMSE(γ) = ||γ - γ_hat||²₂ / ||γ||²₂
+% * Inputs:
+%   az_R, el_R, az_T, el_T, tau, pR, pl - True parameters and locations
+%   az_R_h, el_R_h, az_T_h, el_T_h, tau_h, pR_h, pl_h - Estimated values
 %
-%   For SP localization (multiple targets):
-%   NMSE(p_l) = Σ_l ||p_l - p_hat_l||²₂ / Σ_l ||p_l||²₂
+% * Outputs:
+%   nmse_vals - 1 x 7 array of NMSE values
 %
-% Inputs:
-%   x_true - true parameter vector / matrix (real or complex)
-%   x_hat  - estimated parameter vector / matrix
+% * MATLAB Implementation:
+%   Applies an inline anonymous function for norm calculations.
 %
-% Outputs:
-%   nmse   - scalar NMSE value (non-negative)
-%
-% Usage example:
-%   nmse_aoa = compute_nmse(theta_az_R_true, theta_az_R_hat);
-%   nmse_sp  = compute_nmse(pl_all, pl_hat);   % 3 x L matrices
+% * Complexity Analysis:
+%   O(L) where L is the number of paths/points.
 % =========================================================================
 
-    x_true = x_true(:);
-    x_hat  = x_hat(:);
+    mse = @(x, xh) norm(x(:)-xh(:))^2;
+    nsq = @(x) norm(x(:))^2;
 
-    norm_true = norm(x_true);
-    if norm_true < eps
-        nmse = norm(x_true - x_hat)^2;   % Unnormalized when true is zero
-    else
-        nmse = norm(x_true - x_hat)^2 / norm_true^2;
-    end
+    nmse_vals = [ mse(az_R, az_R_h), ...
+                  mse(el_R, el_R_h), ...
+                  mse(az_T, az_T_h), ...
+                  mse(el_T, el_T_h), ...
+                  mse(tau,  tau_h),  ...
+                  mse(pR,   pR_h),   ...
+                  sum(sum((pl-pl_h).^2,1)) ];
+                  
+    norms_sq =  [ nsq(az_R), ...
+                  nsq(el_R), ...
+                  nsq(az_T), ...
+                  nsq(el_T), ...
+                  nsq(tau),  ...
+                  nsq(pR),   ...
+                  sum(sum(pl.^2,1)) ];
 end

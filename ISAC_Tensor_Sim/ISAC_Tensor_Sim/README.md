@@ -9,7 +9,6 @@ Jiang et al., *Sensors* 2025, 25, 5050. DOI: 10.3390/s25165050
 
 ```
 ISAC_Tensor_Sim/
-├── main.m                    % Master script (to run all simulations)
 ├── run_fig4_quick.m          % Run Figure 4 (NMSE vs SNR) with optimized settings
 ├── run_fig5_quick.m          % Run Figure 5 (NMSE vs K)
 ├── run_fig6_quick.m          % Run Figure 6 (RMSE vs Antenna Array Size N)
@@ -32,6 +31,7 @@ ISAC_Tensor_Sim/
 │
 └── utils/
     ├── match_paths_combined.m% Hungarian algorithm for matching estimated vs true paths
+    ├── reorder_cp_factors.m  % Resolves CP-ALS permutation ambiguity using ToA
     └── compute_nmse.m        % Calculates errors (MSE and squared norms)
 ```
 
