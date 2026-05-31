@@ -57,7 +57,12 @@ function params = config()
     params.K_bar = 128;
 
     % Monte Carlo and algorithm settings
-    params.MC  = 100; % Set to 50 for quick verification, user can change to 600
+    params.MC  = 100; % Default MC trials
+    
+    % Toggle baseline algorithms
+    params.run_music = false; % Set to false to save time
+    params.run_pudd  = false; % Set to false to save time
+    params.run_crb   = false; % Set to false to save time
     params.rng_seed = 42;
     params.Ns  = 1024;   % Number of 1D search points for ToA
     params.max_iter = 2000;

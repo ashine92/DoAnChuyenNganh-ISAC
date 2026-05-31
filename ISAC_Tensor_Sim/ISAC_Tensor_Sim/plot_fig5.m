@@ -22,15 +22,23 @@ function plot_fig5(results, params)
         subplot(2,3,pi_);
         hold on; grid on; box on;
         for mi = 1:3
-            data = results.(methods{mi}).(fields{pi_});
-            data = max(data, 1e-12);
-            semilogy(K_vec, data, markers{mi}, 'Color', colors{mi}, ...
-                'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{mi});
+            if isfield(results, methods{mi})
+                data = results.(methods{mi}).(fields{pi_});
+                if any(data > 0)
+                    data = max(data, 1e-12);
+                    semilogy(K_vec, data, markers{mi}, 'Color', colors{mi}, ...
+                        'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{mi});
+                end
+            end
         end
-        crb_data = results.CRB.(fields{pi_});
-        crb_data = max(crb_data, 1e-12);
-        semilogy(K_vec, crb_data, markers{4}, 'Color', colors{4}, ...
-            'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{4});
+        if isfield(results, 'CRB')
+            crb_data = results.CRB.(fields{pi_});
+            if any(crb_data > 0)
+                crb_data = max(crb_data, 1e-12);
+                semilogy(K_vec, crb_data, markers{4}, 'Color', colors{4}, ...
+                    'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{4});
+            end
+        end
         xlabel('K', 'FontSize', 10);
         ylabel(ylabels{pi_}, 'FontSize', 10);
         title(panel_labels{pi_}, 'FontSize', 9);

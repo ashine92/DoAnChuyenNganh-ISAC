@@ -23,14 +23,22 @@ function plot_fig4(results, params)
         hold on; grid on; box on;
 
         for mi = 1:3
-            data = results.(methods{mi}).(fields{pi_});
-            plot(SNR_vec, data, markers{mi}, 'Color', colors{mi}, ...
-                'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{mi});
+            if isfield(results, methods{mi})
+                data = results.(methods{mi}).(fields{pi_});
+                if any(data > 0)
+                    plot(SNR_vec, data, markers{mi}, 'Color', colors{mi}, ...
+                        'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{mi});
+                end
+            end
         end
         % CRB
-        crb_data = results.CRB.(fields{pi_});
-        plot(SNR_vec, crb_data, markers{4}, 'Color', colors{4}, ...
-            'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{4});
+        if isfield(results, 'CRB')
+            crb_data = results.CRB.(fields{pi_});
+            if any(crb_data > 0)
+                plot(SNR_vec, crb_data, markers{4}, 'Color', colors{4}, ...
+                    'LineWidth', 1.5, 'MarkerSize', 7, 'DisplayName', leg_str{4});
+            end
+        end
 
         xlabel('SNR (dB)', 'FontSize', 10);
         ylabel(ylabels{pi_}, 'FontSize', 10);
